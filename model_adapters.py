@@ -39,7 +39,7 @@ class ResNetAdapter(object):
                     return ParameterType.DOWNSAMPLE_BN_W
                 else:
                     return ParameterType.DOWNSAMPLE_BN_B
-        elif FC_STR in param_name:
+        elif FC_STR in param_name or 'last_linear' in param_name:
             return ParameterType.FC_WEIGHTS
 
     def get_downsample(self, model, layer_index, block_index):
@@ -70,7 +70,7 @@ class ResNetAdapter(object):
         layer_index = -1
         block_index = -1
         tensor_index = -1
-        if not LAYER_STR in param_name:
+        if not LAYER_STR in param_name or (LAYER_STR in param_name and param_name[5] == '0'):
             type = self.conv_or_bn_type(param_name)
             if type != ParameterType.FC_WEIGHTS:
                 tensor_index = int_from_str(param_name)[0]
