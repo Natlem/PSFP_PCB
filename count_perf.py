@@ -18,6 +18,15 @@ from reid.utils.data.preprocessor import Preprocessor
 from reid.utils.logging import Logger
 from reid.utils.serialization import load_checkpoint, save_checkpoint
 
+from utils import ParameterType
+import model_adapters
+from prune_utils import prune_fc_like, get_prune_index_ratio, \
+    get_prune_index_target, L1_criterion, L2_criterion, random_criterion, \
+    gng_criterion, init_from_pretrained, create_conv_tensor, create_new_bn, zeroed_criterion
+
+import functools
+from thop import profile
+
 def get_data(name, data_dir, height, width, batch_size, workers):
     root = osp.join(data_dir, name)
     root = data_dir
@@ -82,80 +91,11 @@ def  main(args):
                  args.width, args.batch_size, args.workers,
                  )
 
-
-    # Create model
-    model = models.create(args.arch, num_features=args.features,
-                          dropout=args.dropout, num_classes=num_classes,cut_at_pooling=False, FCN=True)
-
-    # Load from checkpoint
-    start_epoch = best_top1 = 0
-    if args.resume:
-        checkpoint = load_checkpoint(args.resume)
-        model_dict = model.state_dict()
-        checkpoint_load = {k: v for k, v in (checkpoint['state_dict']).items() if k in model_dict}
-        model_dict.update(checkpoint_load)
-        model.load_state_dict(model_dict)
-#        model.load_state_dict(checkpoint['state_dict'])
-        start_epoch = checkpoint['epoch']
-        best_top1 = checkpoint['best_top1']
-        print("=> Start epoch {}  best top1 {:.1%}"
-              .format(start_epoch, best_top1))
-
-    model = nn.DataParallel(model).cuda()
-
-
-    # Evaluator
-    evaluator = Evaluator(model)
-    if args.evaluate:
-        print("Test:")
-        evaluator.evaluate(query_loader, gallery_loader,  dataset.query, dataset.gallery)
-        return
-
-    # Criterion
-    criterion = nn.CrossEntropyLoss().cuda()
-
-    # Optimizer
-    if hasattr(model.module, 'base'):
-        base_param_ids = set(map(id, model.module.base.parameters()))
-        new_params = [p for p in model.parameters() if
-                      id(p) not in base_param_ids]
-        param_groups = [
-            {'params': model.module.base.parameters(), 'lr_mult': 0.1},
-            {'params': new_params, 'lr_mult': 1.0}]
-    else:
-        param_groups = model.parameters()
-    optimizer = torch.optim.SGD(param_groups, lr=args.lr,
-                                momentum=args.momentum,
-                                weight_decay=args.weight_decay,
-                                nesterov=True)
-
-    # Trainer
-    trainer = Trainer(model, criterion, 0, 0, SMLoss_mode=0)
-
-    # Schedule learning rate
-    def adjust_lr(epoch):
-        step_size = 60 if args.arch == 'inception' else args.step_size
-        lr = args.lr * (0.1 ** (epoch // step_size))
-        for g in optimizer.param_groups:
-            g['lr'] = lr * g.get('lr_mult', 1)
-
-    # Start training
-    for epoch in range(start_epoch, args.epochs):
-        adjust_lr(epoch)
-        trainer.train(epoch, train_loader, optimizer)
-        is_best = True
-        save_checkpoint({
-            'state_dict': model.module.state_dict(),
-            'epoch': epoch + 1,
-            'best_top1': best_top1,
-        }, is_best, fpath=osp.join(args.logs_dir, 'checkpoint.pth.tar'))
-        torch.save(model, "all_saves/{}_{}_{}".format(args.arch, args.dataset, epoch))
-
-    # Final test
-    print('Test with best model:')
-    checkpoint = load_checkpoint(osp.join(args.logs_dir, 'checkpoint.pth.tar'))
-    model.module.load_state_dict(checkpoint['state_dict'])
-    evaluator.evaluate(query_loader, gallery_loader, dataset.query, dataset.gallery)
+    model = torch.load("all_saves/PSPF_resnet50_market_31.p").module.cuda()
+    for i, inputs in enumerate(train_loader):
+        imgs, _, pids, _ = inputs
+        macs, params = profile(model, inputs=(imgs.cuda(), ))
+        break
 
 
 if __name__ == '__main__':

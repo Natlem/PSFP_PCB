@@ -8,7 +8,7 @@ from .evaluation_metrics import accuracy
 from .utils.meters import AverageMeter
 from .utils import Bar
 from torch.nn import functional as F
-
+from thop import profile
 class BaseTrainer(object):
     def __init__(self, model, criterion, X, Y, SMLoss_mode=0):
         super(BaseTrainer, self).__init__()
@@ -33,7 +33,7 @@ class BaseTrainer(object):
             loss0, loss1, loss2, loss3, loss4, loss5, prec1 = self._forward(inputs, targets)
 #===================================================================================
             loss = (loss0+loss1+loss2+loss3+loss4+loss5)/6
-            losses.update(loss.data[0], targets.size(0))
+            losses.update(loss.item(), targets.size(0))
             precisions.update(prec1, targets.size(0))
 
             optimizer.zero_grad()
@@ -52,6 +52,7 @@ class BaseTrainer(object):
                               N_prec=precisions.val, N_preca=precisions.avg,
 							  )
             bar.next()
+            break
         bar.finish()
 
 
@@ -66,12 +67,15 @@ class BaseTrainer(object):
 class Trainer(BaseTrainer):
     def _parse_data(self, inputs):
         imgs, _, pids, _ = inputs
-        inputs = [Variable(imgs)]
+        inputs = [Variable(imgs).cuda()]
         targets = Variable(pids.cuda())
         return inputs, targets
 
     def _forward(self, inputs, targets):
         outputs = self.model(*inputs)
+        macs, params = profile(self.model, inputs=(*inputs,))
+        print(macs, params)
+
         index = (targets-751).data.nonzero().squeeze_()
 		
         if isinstance(self.criterion, torch.nn.CrossEntropyLoss):
@@ -82,7 +86,7 @@ class Trainer(BaseTrainer):
             loss4 = self.criterion(outputs[1][4],targets)
             loss5 = self.criterion(outputs[1][5],targets)
             prec, = accuracy(outputs[1][2].data, targets.data)
-            prec = prec[0]
+            prec = prec.item()
                         
         elif isinstance(self.criterion, OIMLoss):
             loss, outputs = self.criterion(outputs, targets)

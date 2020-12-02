@@ -8,7 +8,7 @@ from .evaluation_metrics import cmc, mean_ap
 from .feature_extraction import extract_cnn_feature
 from .utils.meters import AverageMeter
 
-
+from thop import profile
 def extract_features(model, data_loader, print_freq=10):
     model.eval()
     batch_time = AverageMeter()
