@@ -139,6 +139,15 @@ class ResNetAdapter(object):
             else:
                 tensor_key = self.type_2_str(param_type) + str(tensor_index)
                 model._modules[tensor_key] = new_layer
+
+        elif model._get_name() == 'SENet' and layer_index == 0:
+            layer_key = LAYER_STR + str(layer_index)
+            if param_type == ParameterType.CNN_WEIGHTS:
+                model._modules[layer_key][0] = new_layer
+            if param_type == ParameterType.BN_WEIGHT:
+                model._modules[layer_key][1] = new_layer
+            if param_type == ParameterType.BN_BIAS:
+                model._modules[layer_key][1] = new_layer
         else:
             layer_key = LAYER_STR + str(layer_index)
             tensor_key = self.type_2_str(param_type) + str(tensor_index)

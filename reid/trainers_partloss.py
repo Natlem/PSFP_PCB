@@ -67,7 +67,7 @@ class BaseTrainer(object):
 class Trainer(BaseTrainer):
     def _parse_data(self, inputs):
         imgs, _, pids, _ = inputs
-        inputs = [Variable(imgs)]
+        inputs = [Variable(imgs).cuda()]
         targets = Variable(pids.cuda())
         return inputs, targets
 
