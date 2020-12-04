@@ -1,4 +1,5 @@
 from utils import ParameterType, int_from_str
+from reid.models.seesnet import SEResNet
 
 LAYER_STR = "layer"
 WEIGHT_STR = "weight"
@@ -70,10 +71,15 @@ class ResNetAdapter(object):
         layer_index = -1
         block_index = -1
         tensor_index = -1
-        if not LAYER_STR in param_name or (LAYER_STR in param_name and param_name[5] == '0'):
+        if not LAYER_STR in param_name:
             type = self.conv_or_bn_type(param_name)
             if type != ParameterType.FC_WEIGHTS:
                 tensor_index = int_from_str(param_name)[0]
+        elif (LAYER_STR in param_name and param_name[5] == '0'):
+            type = self.conv_or_bn_type(param_name)
+            if type != ParameterType.FC_WEIGHTS:
+                tensor_index = int_from_str(param_name)[0]
+            return type, tensor_index, 0, -1
         else:
             layer_index, block_index, tensor_index = int_from_str(param_name)
             type = self.conv_or_bn_type(param_name)
@@ -91,9 +97,21 @@ class ResNetAdapter(object):
     def get_layer(self, model, param_type, tensor_index, layer_index, block_index):
         if layer_index == -1:
             if param_type == ParameterType.FC_WEIGHTS:
+                if model._get_name() == 'SENet':
+                    return model._modules['last_linear']
                 return model._modules[FC_STR]
             tensor_key = self.type_2_str(param_type) + str(tensor_index)
             tensor = model._modules[tensor_key]
+            return tensor
+
+        if model._get_name() == 'SENet' and layer_index == 0:
+            layer_key = LAYER_STR + str(layer_index)
+            if param_type == ParameterType.CNN_WEIGHTS:
+                tensor = model._modules[layer_key][0]
+            if param_type == ParameterType.BN_WEIGHT:
+                tensor = model._modules[layer_key][1]
+            if param_type == ParameterType.BN_BIAS:
+                tensor = model._modules[layer_key][1]
             return tensor
 
         layer_key = LAYER_STR + str(layer_index)
