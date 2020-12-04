@@ -187,7 +187,7 @@ def  main(args):
 
     for epoch in range(1, args.epochs + 1):
         adjust_lr(epoch)
-        #trainer.train(epoch, train_loader, optimizer)
+        trainer.train(epoch, train_loader, optimizer)
 
         prune_index_dict, _ = L2_criterion(model=model.base, model_adapter=model_adapter)
         out_channels_keep_indexes = []
@@ -197,7 +197,7 @@ def  main(args):
         removed_filters_total_epoch = 0
 
         for name, parameters in model.base.named_parameters():
-            print(name)
+            #print(name)
             param_type, tensor_index, layer_index, block_index = model_adapter.get_param_type_and_layer_index(name)
             if not finished_list:
                 type_list.append(param_type)
@@ -443,7 +443,7 @@ def  main(args):
         removed_filters_total = removed_filters_total_epoch
         if removed_filters_total - removed_filters_total_epoch == 0:
             forced_remove = True
-        #evaluator.evaluate(query_loader, gallery_loader, dataset.query, dataset.gallery)
+        evaluator.evaluate(query_loader, gallery_loader, dataset.query, dataset.gallery)
 
     # Final removal
 
@@ -458,7 +458,7 @@ def  main(args):
 
 
     for name, parameters in model.base.named_parameters():
-        print(name)
+       #print(name)
         param_type, tensor_index, layer_index, block_index = model_adapter.get_param_type_and_layer_index(name)
         if not finished_list:
             type_list.append(param_type)
