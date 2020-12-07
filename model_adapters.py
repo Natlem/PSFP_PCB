@@ -53,6 +53,21 @@ class ResNetAdapter(object):
             return block[tkey][0], name
         else:
             return None, ""
+    def get_se(self, model, layer_index, block_index):
+        layer_key = LAYER_STR + str(layer_index)
+        block_list = model._modules[layer_key]
+        block = block_list[block_index]._modules
+        tkey = self.type_2_str(ParameterType.DOWNSAMPLE_WEIGHTS)
+        if 'se_module' in block:
+            name = LAYER_STR + str(layer_index) + "." + str(block_index) + "." + DOWNSAMPLE_STR + ".0.weight"
+            return block['se_module'].fc1, name
+        else:
+            return None, ""
+
+    def set_se_pre_layer(self, model, new_layer, layer_index, block_index):
+        layer_key = LAYER_STR + str(layer_index)
+        model._modules[layer_key][block_index]._modules['se_module'].fc1 = new_layer
+
 
     def get_conv2_from_downsample(self, model, layer_index, block_index):
         layer_key = LAYER_STR + str(layer_index)

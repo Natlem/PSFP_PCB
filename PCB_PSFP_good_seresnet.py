@@ -345,21 +345,18 @@ def  main(args):
                             prune_target = original_c[name]
                             # prune_target = num_remain_from_expo(original_c[name], k, a, epoch)
                             # prune_target = original_c[name] * np.exp(-decay_rates_c[name] * (epoch + 1))
-                            keep_index, reset_index = get_prune_index_target(original_out_channels, prune_target,
-                                                                             sorted_filters_index, forced_remove)
+                            # keep_index, reset_index = get_prune_index_target(original_out_channels, prune_target,
+                            #                                                  sorted_filters_index, forced_remove)
+                            keep_index = torch.range(0, original_out_channels - 1, dtype=torch.long)
+
                             downsample_cnn.weight.data[:, last_reset_index, :, :] = zero_initializer(
                                 downsample_cnn.weight.data[:, last_reset_index, :, :])
-
-                            downsample_cnn.weight.data[reset_index] = zero_initializer(
-                                downsample_cnn.weight.data[reset_index])
-                            if downsample_cnn.bias is not None:
-                                downsample_cnn.bias.data[reset_index] = zero_initializer(
-                                    downsample_cnn.bias.data[reset_index])
 
                             removed_filters_total_epoch += reset_index.shape[0]
                             removed_parameters_total += reset_index.shape[0] * last_reset_index.shape[
                                 0] * parameters.shape[2:].numel()
                             start_index = (keep_index.sort()[0], reset_index)
+
 
                         original_out_channels = parameters.shape[0]
                         conv_tensor = model_adapter.get_layer(model.base, param_type, tensor_index, layer_index, block_index)
@@ -381,6 +378,11 @@ def  main(args):
                         if out_channels_keep_indexes is not None or len(out_channels_keep_indexes) == 0:
                             in_channels_keep_indexes.append(out_channels_keep_indexes[-1].sort()[0])
                         out_channels_keep_indexes.append(keep_index.sort()[0])
+
+                        # se_cnn, _ = model_adapter.get_se(model.base, layer_index, block_index)
+                        # if se_cnn is not None:
+                        #     se_cnn.weight.data[:, reset_indexes[-1], :, :] = zero_initializer(
+                        #     se_cnn.weight.data[:, reset_indexes[-1], :, :])
 
 
                 elif param_type == ParameterType.DOWNSAMPLE_WEIGHTS:
@@ -458,7 +460,6 @@ def  main(args):
 
 
     for name, parameters in model.base.named_parameters():
-       #print(name)
         param_type, tensor_index, layer_index, block_index = model_adapter.get_param_type_and_layer_index(name)
         if not finished_list:
             type_list.append(param_type)
@@ -567,8 +568,8 @@ def  main(args):
 
                         last_keep_index, _ = start_index
                         only_zero_filters_index = zero_indexes[d_name]
-                        keep_index = remain_indexes[d_name]
                         original_out_channels = parameters.shape[0]
+                        keep_index = torch.range(0, original_out_channels - 1, dtype=torch.long)
 
                         last_start_conv = create_conv_tensor(downsample_cnn, [last_keep_index], zero_initializer,
                                                         keep_index, []).cuda()
@@ -588,6 +589,14 @@ def  main(args):
                     if out_channels_keep_indexes is not None or len(out_channels_keep_indexes) == 0:
                         in_channels_keep_indexes.append(out_channels_keep_indexes[-1].sort()[0])
                     out_channels_keep_indexes.append(keep_index.sort()[0])
+
+                    # if se_cnn is not None:
+                    #     se_start_conv = create_conv_tensor(se_cnn, out_channels_keep_indexes, zero_initializer,
+                    #                                        torch.range(0, se_cnn.out_channels - 1, dtype=torch.long), []).cuda()
+                    #     model_adapter.set_se_pre_layer(model.base, se_start_conv,
+                    #                                    layer_index,
+                    #                                    block_index)
+
 
 
             elif param_type == ParameterType.DOWNSAMPLE_WEIGHTS:
