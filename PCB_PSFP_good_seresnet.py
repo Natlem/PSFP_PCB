@@ -176,6 +176,7 @@ def  main(args):
         if param_type == ParameterType.CNN_WEIGHTS or param_type == ParameterType.DOWNSAMPLE_WEIGHTS:
             #decay_rates_c[name] = (np.log(parameters.shape[0]) - np.log(target_prune[name])) / args.epochs
             original_c[name] = parameters.shape[0]
+        original_c['local_conv'] = model.local_conv.out_channels
 
     finished_list = False
     type_list = []
@@ -441,6 +442,26 @@ def  main(args):
                     in_channels_keep_indexes.append(out_channels_keep_indexes[-1].sort()[0])
                     out_channels_keep_indexes.append(out_channels_keep_indexes[-1])
 
+        #Prune local conv
+        local_conv_tensor = model._modules['local_conv']
+        original_out_channels = local_conv_tensor.out_channels
+        filters_L2 = local_conv_tensor.weight.data.view(original_out_channels, -1).norm(dim=1, p=2)
+        _, local_conv_sorted_filters_index = filters_L2.sort()
+        prune_target = num_remain_from_expo(original_c['local_conv'], k, a, epoch)
+        keep_index, reset_index = get_prune_index_target(original_out_channels, prune_target,
+                                                         local_conv_sorted_filters_index, forced_remove)
+        local_conv_tensor.weight.data[reset_index] = zero_initializer(local_conv_tensor.weight.data[reset_index])
+        if local_conv_tensor.bias is not None:
+            local_conv_tensor.bias.data[reset_index] = zero_initializer(local_conv_tensor.bias.data[reset_index])
+        local_bn_tensor = model._modules['feat_bn2d']
+        local_bn_tensor.running_var.data[reset_index] = zero_initializer(local_bn_tensor.running_var.data[reset_index])
+        local_bn_tensor.running_mean.data[reset_index] = zero_initializer(local_bn_tensor.running_mean.data[reset_index])
+        local_bn_tensor.weight.data[reset_index] = zero_initializer(local_bn_tensor.weight.data[reset_index])
+        local_bn_tensor.bias.data[reset_index] = zero_initializer(local_bn_tensor.bias.data[reset_index])
+
+
+
+
         # print("Total: {}".format(removed_filters_total))
         removed_filters_total = removed_filters_total_epoch
         if removed_filters_total - removed_filters_total_epoch == 0:
@@ -645,6 +666,26 @@ def  main(args):
                 in_channels_keep_indexes.append(out_channels_keep_indexes[-1].sort()[0])
                 out_channels_keep_indexes.append(out_channels_keep_indexes[-1])
 
+    #fINAL REMOVE LOCAL CONV
+    local_conv_tensor = model._modules['local_conv']
+    original_out_channels = local_conv_tensor.out_channels
+    filters_L2 = local_conv_tensor.weight.data.view(original_out_channels, -1).norm(dim=1, p=2)
+    zero_indexes_local_conv  = (filters_L2 != 0).nonzero().squeeze()
+    keep_indexs_local_conv = filters_L2.nonzero().squeeze()
+    new_tensor = create_conv_tensor(local_conv_tensor, [], zero_initializer, keep_indexs_local_conv, []).cuda()
+    model._modules['local_conv'] = new_tensor
+
+    local_bn_tensor = model._modules['feat_bn2d']
+    n_bn = create_new_bn(local_bn_tensor, keep_indexs_local_conv, []).cuda()
+    model._modules['feat_bn2d'] = n_bn
+
+    prune_instances_fc(keep_indexs_local_conv, model, original_out_channels, 'instance0')
+    prune_instances_fc(keep_indexs_local_conv, model, original_out_channels, 'instance1')
+    prune_instances_fc(keep_indexs_local_conv, model, original_out_channels, 'instance2')
+    prune_instances_fc(keep_indexs_local_conv, model, original_out_channels, 'instance3')
+    prune_instances_fc(keep_indexs_local_conv, model, original_out_channels, 'instance4')
+    prune_instances_fc(keep_indexs_local_conv, model, original_out_channels, 'instance5')
+
     trainer.train(epoch + 1, train_loader, optimizer)
     is_best = True
     save_checkpoint({
@@ -659,6 +700,21 @@ def  main(args):
     checkpoint = load_checkpoint(osp.join(args.logs_dir, 'checkpoint.pth.tar'))
     model.load_state_dict(checkpoint['state_dict'])
     evaluator.evaluate(query_loader, gallery_loader, dataset.query, dataset.gallery)
+
+
+def prune_instances_fc(keep_indexs_local_conv, model, original_out_channels, instance_name):
+    ifc = model._modules[instance_name]
+    new_fc_weight = prune_fc_like(ifc.weight.data, keep_indexs_local_conv,
+                                  original_out_channels)
+    new_fc_bias = None
+    if ifc.bias is not None:
+        new_fc_bias = ifc.bias.data
+    new_fc_tensor = nn.Linear(new_fc_weight.shape[1], new_fc_weight.shape[0],
+                              bias=new_fc_bias is not None).cuda()
+    new_fc_tensor.weight.data = new_fc_weight
+    if ifc.bias is not None:
+        new_fc_tensor.bias.data = new_fc_bias
+    model._modules[instance_name] = new_fc_tensor
 
 
 if __name__ == '__main__':
